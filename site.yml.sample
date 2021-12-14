@@ -170,6 +170,10 @@
             status: "In Progress"
             start: "{{ lookup('pipe', 'date +%Y%m%d%H%M%SZ') }}"
 
+  vars_files:
+    - group_vars/all.yml
+  serial: "{{ yh_osd_deploy_serial | default(5) | int }}"
+
   tasks:
     - import_role:
         name: ceph-defaults
