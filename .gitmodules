@@ -1,0 +1,9 @@
+[submodule "yh_inventory"]
+	path = yh_inventory
+	url = git@github.com:Yuhan-Internet/ceph_inventory.git
+[submodule "yh_roles"]
+	path = yh_roles
+	url = git@github.com:Yuhan-Internet/ansible_roles.git
+[submodule "yh_plays"]
+	path = yh_plays
+	url = git@github.com:Yuhan-Internet/ceph_plays.git
