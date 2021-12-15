@@ -18,14 +18,21 @@
 - name: include_tasks start_radosgw.yml
   include_tasks: start_radosgw.yml
   when:
+    - not rgw_yh_es_sync | bool
     - not rgw_multisite | bool
     - not containerized_deployment | bool
 
 - name: include start_docker_rgw.yml
   include_tasks: start_docker_rgw.yml
   when:
+    - not rgw_yh_es_sync
     - not rgw_multisite | bool
     - containerized_deployment | bool
+
+- name: include_tasks yh_es_sync/main.yml
+  include_tasks: yh_es_sync/main.yml
+  when:
+    - rgw_yh_es_sync | bool
 
 - name: include_tasks multisite/main.yml
   include_tasks: multisite/main.yml

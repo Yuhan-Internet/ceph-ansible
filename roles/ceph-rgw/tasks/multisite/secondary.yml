@@ -4,7 +4,7 @@
     secondary_realms: "{{ secondary_realms | default([]) | union([{ 'realm': item.rgw_realm, 'zonegroup': item.rgw_zonegroup, 'zone': item.rgw_zone, 'endpoint': item.endpoint, 'system_access_key': item.system_access_key, 'system_secret_key': item.system_secret_key, 'is_master': item.rgw_zonemaster | default(hostvars[item.host]['rgw_zonemaster']) }]) }}"
   loop: "{{ rgw_instances_all }}"
   run_once: true
-  when: not item.rgw_zonemaster | default(hostvars[item.host]['rgw_zonemaster']) | bool
+  when: not item.rgw_zonemaster | default(hostvars[item.host]['rgw_zonemaster']) | bool and not rgw_yh_es_sync | bool
 
 - name: ensure connection to primary cluster from mon
   uri:
@@ -18,7 +18,7 @@
   uri:
     url: "{{ item.endpoint }}"
   loop: "{{ rgw_instances }}"
-  when: not item.rgw_zonemaster | default(rgw_zonemaster) | bool
+  when: not item.rgw_zonemaster | default(rgw_zonemaster) | bool and not rgw_yh_es_sync | bool
 
 - name: fetch the realm(s)
   command: "{{ container_exec_cmd }} radosgw-admin realm pull --cluster={{ cluster }} --rgw-realm={{ item.realm }} --url={{ item.endpoint }} --access-key={{ item.system_access_key }} --secret={{ item.system_secret_key }}"
@@ -44,6 +44,16 @@
     secret_key: "{{ item.system_secret_key }}"
     default: "{{ true if zones | length == 1 else false }}"
     master: false
+    tier_type: "{{ item.tier_type | default(omit) }}"
+    es_tier_conf_endpoint: "{{ item.es_tier_conf_endpoint | default(omit) }}"
+    es_tier_conf_username: "{{ item.es_tier_conf_username | default(omit) }}"
+    es_tier_conf_password: "{{ item.es_tier_conf_password | default(omit) }}"
+    es_tier_conf_num_shards: "{{ item.es_tier_conf_num_shards | default(omit) }}"
+    es_tier_conf_num_replicas: "{{ item.es_tier_conf_num_replicas | default(omit) }}"
+    es_tier_conf_explicit_custom_meta: "{{ item.es_tier_conf_explicit_custom_meta | default(omit) }}"
+    es_tier_conf_index_buckets_list: "{{ item.es_tier_conf_index_buckets_list | default(omit) }}"
+    es_tier_conf_approved_owners_list: "{{ item.es_tier_conf_approved_owners_list | default(omit) }}"
+    es_tier_conf_override_index_path: "{{ item.es_tier_conf_override_index_path | default(omit) }}"
   delegate_to: "{{ groups[mon_group_name][0] }}"
   run_once: true
   loop: "{{ zones }}"
@@ -61,6 +71,8 @@
     realm: "{{ item.realm }}"
     zonegroup: "{{ item.zonegroup }}"
     endpoints: "{{ item.endpoints.split(',') }}"
+    access_key: "{{ item.system_access_key }}"
+    secret_key: "{{ item.system_secret_key }}"
   delegate_to: "{{ groups[mon_group_name][0] }}"
   run_once: true
   loop: "{{ zone_endpoints_list }}"
@@ -72,10 +84,11 @@
     CEPH_CONTAINER_BINARY: "{{ container_binary }}"
 
 - name: update period for zone creation
-  command: "{{ container_exec_cmd }} radosgw-admin --cluster={{ cluster }} --rgw-realm={{ item.realm }} --rgw-zonegroup={{ item.zonegroup }} --rgw-zone={{ item.zone }} period update --commit"
+  command: "{{ container_exec_cmd }} radosgw-admin --cluster={{ cluster }} --rgw-realm={{ item.realm }} --rgw-zonegroup={{ item.zonegroup }} --rgw-zone={{ rgw_yh_master_zone }} period update --commit"
   delegate_to: "{{ groups[mon_group_name][0] }}"
   run_once: true
   loop: "{{ zone_endpoints_list }}"
   when:
+    - inventory_hostname in groups['YH_RgwEsyncs']
     - zone_endpoints_list is defined
     - not item.is_master | bool

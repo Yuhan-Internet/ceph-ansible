@@ -35,7 +35,7 @@
     zonegroup: "{{ item.zonegroup }}"
     access_key: "{{ item.system_access_key }}"
     secret_key: "{{ item.system_secret_key }}"
-    default: "{{ true if zones | length == 1 else false }}"
+    default: "{{ true if zones | length == 1 or item.zone == rgw_yh_master_zone else false }}"
     master: true
   delegate_to: "{{ groups[mon_group_name][0] }}"
   run_once: true
@@ -57,6 +57,7 @@
   run_once: true
   loop: "{{ zone_endpoints_list }}"
   when:
+    - not rgw_yh_es_sync | bool
     - zone_endpoints_list is defined
     - item.is_master | bool
   environment:
@@ -70,6 +71,8 @@
     realm: "{{ item.realm }}"
     zonegroup: "{{ item.zonegroup }}"
     endpoints: "{{ item.endpoints.split(',') }}"
+    access_key: "{{ item.system_access_key }}"
+    secret_key: "{{ item.system_secret_key }}"
   delegate_to: "{{ groups[mon_group_name][0] }}"
   run_once: true
   loop: "{{ zone_endpoints_list }}"
@@ -86,6 +89,7 @@
   run_once: true
   loop: "{{ zone_endpoints_list }}"
   when:
+    - inventory_hostname in groups['YH_RgwMasters']
     - zone_endpoints_list is defined
     - item.is_master | bool
 

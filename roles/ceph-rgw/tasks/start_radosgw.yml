@@ -23,7 +23,8 @@
   when:
     - not rgw_multisite | bool or
       ((rgw_multisite | bool and item.rgw_zonesecondary | default(rgw_zonesecondary) | bool and deploy_secondary_zones | default(True)) or
-      (rgw_multisite | bool and item.rgw_zonemaster | default(rgw_zonemaster)))
+      (rgw_multisite | bool and item.rgw_zonemaster | default(rgw_zonemaster))) or
+      rgw_yh_es_sync | bool
 
 - name: enable the ceph-radosgw.target service
   systemd:

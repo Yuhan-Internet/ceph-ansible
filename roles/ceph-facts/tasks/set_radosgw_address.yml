@@ -42,20 +42,21 @@
         _radosgw_address: "{{ hostvars[inventory_hostname]['ansible_facts'][_interface][ip_version][0]['address'] | ipwrap }}"
       when: ip_version == 'ipv6'
 
-- name: set_fact rgw_instances without rgw multisite
+- name: set_fact rgw_instances without rgw multisite|rgw_yh_es_sync
   set_fact:
     rgw_instances: "{{ rgw_instances|default([]) | union([{'instance_name': 'rgw' + item|string, 'radosgw_address': _radosgw_address, 'radosgw_frontend_port': radosgw_frontend_port|int + item|int }]) }}"
   with_sequence: start=0 end={{ radosgw_num_instances|int - 1 }}
   when:
     - inventory_hostname in groups.get(rgw_group_name, [])
     - not rgw_multisite | bool
+    - not rgw_yh_es_sync | default(False) | bool
 
 - name: set_fact is_rgw_instances_defined
   set_fact:
     is_rgw_instances_defined: "{{ rgw_instances is defined }}"
   when:
     - inventory_hostname in groups.get(rgw_group_name, [])
-    - rgw_multisite | bool
+    - rgw_multisite | default(False) | bool or rgw_yh_es_sync | default(False) | bool
 
 - name: set_fact rgw_instances with rgw multisite
   set_fact:
@@ -65,20 +66,55 @@
     - inventory_hostname in groups.get(rgw_group_name, [])
     - rgw_multisite | bool
     - not is_rgw_instances_defined | default(False) | bool
+    - not rgw_yh_es_sync | default(False) | bool
+
+- name: set_fact rgw_yh_client_instances with rgw_yh_es_sync
+  set_fact:
+    rgw_yh_client_instances: "{{ rgw_yh_client_instances|default([]) | union([{'rgw_yh_type':'client', 'rgw_zonemaster': 'True', 'rgw_zone': rgw_yh_client_zone, 'instance_name': rgw_yh_type_name.client + '-' + item|string, 'radosgw_address': _radosgw_address, 'radosgw_frontend_port': radosgw_frontend_port|int + item|int, 'rgw_realm': rgw_realm|string, 'rgw_zonegroup': rgw_zonegroup|string, 'system_access_key': system_access_key, 'system_secret_key': system_secret_key, 'rgw_zone_user': rgw_zone_user, 'rgw_zone_user_display_name': rgw_zone_user_display_name }]) }}"
+  with_sequence: start=0 end={{ radosgw_num_instances|int - 1 }}
+  when:
+    - inventory_hostname in groups.get(rgw_group_name, [])
+    - rgw_yh_es_sync | default(False) | bool
+    - not is_rgw_instances_defined | default(False) | bool
+
+- name: set_fact rgw_yh_master_instances
+  set_fact:
+    rgw_yh_master_instances: "{{ rgw_yh_master_instances|default([]) | union([{'rgw_yh_type':'master', 'rgw_zonemaster': 'True', 'rgw_zone': rgw_yh_master_zone, 'instance_name': rgw_yh_type_name.master, 'radosgw_address': _radosgw_address, 'radosgw_frontend_port': rgw_yh_master_fport, 'rgw_realm': rgw_realm, 'rgw_zonegroup': rgw_zonegroup, 'system_access_key': system_access_key, 'system_secret_key': system_secret_key, 'rgw_zone_user': rgw_zone_user, 'rgw_zone_user_display_name': rgw_zone_user_display_name }]) }}"
+  when:
+    - inventory_hostname in groups['YH_RgwMasters']
+    - rgw_yh_es_sync | default(False) | bool
+    - not is_rgw_instances_defined | default(False) | bool
+
+- name: set_fact rgw_yh_esync_instances
+  set_fact:
+    rgw_yh_esync_instances: "{{ rgw_yh_esync_instances|default([]) | union([{'rgw_yh_type':'esync', 'rgw_zonemaster': 'False', 'rgw_zone': rgw_yh_esync_zone, 'instance_name': rgw_yh_type_name.esync, 'radosgw_address': _radosgw_address, 'radosgw_frontend_port': rgw_yh_esync_fport, 'rgw_realm': rgw_realm, 'rgw_zonegroup': rgw_zonegroup, 'system_access_key': system_access_key, 'system_secret_key': system_secret_key, 'rgw_zone_user': rgw_zone_user, 'rgw_zone_user_display_name': rgw_zone_user_display_name, 'tier_type': hostvars[inventory_hostname]['tier_type']|default(omit), 'es_tier_conf_endpoint': rgw_yh_es_tier_conf_endpoint|default(omit), 'es_tier_conf_username': rgw_yh_es_tier_conf_username|default(omit), 'es_tier_conf_password': rgw_yh_es_tier_conf_password|default(omit), 'es_tier_conf_num_shards': rgw_yh_es_tier_conf_num_shards|default(omit), 'es_tier_conf_num_replicas': rgw_yh_es_tier_conf_num_replicas|default(omit), 'es_tier_conf_explicit_custom_meta': rgw_yh_es_tier_conf_explicit_custom_meta|default(omit), 'es_tier_conf_index_buckets_list': rgw_yh_es_tier_conf_index_buckets_list|default(omit), 'es_tier_conf_approved_owners_list': rgw_yh_es_tier_conf_approved_owners_list|default(omit), 'es_tier_conf_override_index_path': rgw_yh_es_tier_conf_override_index_path|default(omit) }]) }}"
+  when:
+    - inventory_hostname in groups['YH_RgwEsyncs']
+    - rgw_yh_es_sync | default(False) | bool
+    - not is_rgw_instances_defined | default(False) | bool
+
+- name: set_fact rgw_instances with rgw_yh_es_sync
+  set_fact:
+    rgw_instances: "{{ rgw_yh_client_instances | default([]) + rgw_yh_master_instances | default([]) + rgw_yh_esync_instances | default([]) }}"
+  when:
+    - inventory_hostname in groups['YH_RgwAll']
+    - rgw_yh_es_sync | default(False) | bool
+    - not is_rgw_instances_defined | default(False) | bool
 
 - name: set_fact rgw_instances_host
   set_fact:
     rgw_instances_host: '{{ rgw_instances_host | default([]) | union([item | combine({"host": inventory_hostname})]) }}'
   with_items: '{{ rgw_instances }}'
   when:
-    - inventory_hostname in groups.get(rgw_group_name, [])
-    - rgw_multisite | bool
+    - inventory_hostname in groups['YH_RgwAll']
+    - rgw_multisite | default(False) | bool or rgw_yh_es_sync | default(False) | bool
 
 - name: set_fact rgw_instances_all
   set_fact:
     rgw_instances_all: '{{ rgw_instances_all | default([]) | union(hostvars[item]["rgw_instances_host"]) }}'
-  with_items: "{{ groups.get(rgw_group_name, []) }}"
+  with_items: "{{ groups['YH_RgwAll'] }}"
+  run_once: true
   when:
-    - inventory_hostname in groups.get(rgw_group_name, [])
+    - inventory_hostname in groups['YH_RgwAll']
     - hostvars[item]["rgw_instances_host"] is defined
-    - hostvars[item]["rgw_multisite"] | default(False) | bool
+    - hostvars[item]["rgw_multisite"] | default(False) | bool or hostvars[item]["rgw_yh_es_sync"] | default(False) | bool

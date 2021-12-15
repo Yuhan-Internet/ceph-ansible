@@ -1,31 +1,36 @@
 ---
-- name: remove ec profile
-  command: "{{ container_exec_cmd }} ceph --connect-timeout 10 --cluster {{ cluster }} osd erasure-code-profile rm {{ item.value.ec_profile }}"
-  loop: "{{ rgw_create_pools | dict2items }}"
+- name: create ec profile
+  ceph_ec_profile:
+    name: "{{ item.value.ec_profile }}"
+    cluster: "{{ cluster }}"
+    k: "{{ item.value.ec_k }}"
+    m: "{{ item.value.ec_m }}"
+    plugin: "{{ item.value.ec_plugin | default(omit) }}"
+    technique: "{{ item.value.ec_technique | default(omit) }}"
+    crush_device_class: "{{ item.value.crush_device_class | default(omit) }}"
+    crush_root: "{{ item.value.crush_root | default(omit) }}"
+    crush_failure_domain: "{{ item.value.crush_failure_domain | default(omit) }}"
   delegate_to: "{{ groups[mon_group_name][0] }}"
-  changed_when: false
+  loop: "{{ rgw_yh_ec_profile | dict2items }}"
   when:
-    - item.value.type is defined
-    - item.value.type == 'ec'
-  failed_when: false
+    - rgw_yh_ec_profile is defined
+  environment:
+    CEPH_CONTAINER_IMAGE: "{{ ceph_docker_registry + '/' + ceph_docker_image + ':' + ceph_docker_image_tag if containerized_deployment | bool else None }}"
+    CEPH_CONTAINER_BINARY: "{{ container_binary }}"
 
-- name: set ec profile
-  command: "{{ container_exec_cmd }} ceph --connect-timeout 10 --cluster {{ cluster }} osd erasure-code-profile set {{ item.value.ec_profile }} k={{ item.value.ec_k }} m={{ item.value.ec_m }}"
-  loop: "{{ rgw_create_pools | dict2items }}"
+- name: create ec crush rule
+  ceph_crush_rule:
+    name: "{{ item.value.rule_name }}"
+    cluster: "{{ cluster }}"
+    rule_type: erasure
+    profile: "{{ item.value.ec_profile }}"
+  environment:
+    CEPH_CONTAINER_IMAGE: "{{ ceph_docker_registry + '/' + ceph_docker_image + ':' + ceph_docker_image_tag if containerized_deployment | bool else None }}"
+    CEPH_CONTAINER_BINARY: "{{ container_binary }}"
+  loop: "{{ rgw_yh_ec_profile | dict2items }}"
   delegate_to: "{{ groups[mon_group_name][0] }}"
-  changed_when: false
   when:
-    - item.value.type is defined
-    - item.value.type == 'ec'
-
-- name: set crush rule
-  command: "{{ container_exec_cmd }} ceph --connect-timeout 10 --cluster {{ cluster }} osd crush rule create-erasure {{ item.key }} {{ item.value.ec_profile }}"
-  loop: "{{ rgw_create_pools | dict2items }}"
-  delegate_to: "{{ groups[mon_group_name][0] }}"
-  changed_when: false
-  when:
-    - item.value.type is defined
-    - item.value.type == 'ec'
+    - rgw_yh_ec_profile is defined
 
 - name: create ec pools for rgw
   ceph_pool:
@@ -46,8 +51,24 @@
     - item.value.type is defined
     - item.value.type == 'ec'
   environment:
-    CEPH_CONTAINER_IMAGE: "{{ ceph_docker_registry + '/' + ceph_docker_image + ':' + ceph_docker_image_tag if containerized_deployment else None }}"
+    CEPH_CONTAINER_IMAGE: "{{ ceph_docker_registry + '/' + ceph_docker_image + ':' + ceph_docker_image_tag if containerized_deployment | bool else None }}"
     CEPH_CONTAINER_BINARY: "{{ container_binary }}"
+
+- name: create replicated crush rule
+  ceph_crush_rule:
+    name: "{{ item.value.rule_name }}"
+    cluster: "{{ cluster }}"
+    rule_type: replicated
+    bucket_root: "{{ item.value.crush_root | default(omit) }}"
+    bucket_type: "{{ item.value.crush_failure_domain | default(omit) }}"
+    device_class: "{{ item.value.crush_device_class | default(omit) }}"
+  environment:
+    CEPH_CONTAINER_IMAGE: "{{ ceph_docker_registry + '/' + ceph_docker_image + ':' + ceph_docker_image_tag if containerized_deployment | bool else None }}"
+    CEPH_CONTAINER_BINARY: "{{ container_binary }}"
+  loop: "{{ rgw_yh_replicated_rule | dict2items }}"
+  delegate_to: "{{ groups[mon_group_name][0] }}"
+  when:
+    - rgw_yh_replicated_rule is defined
 
 - name: create replicated pools for rgw
   ceph_pool:
@@ -67,5 +88,5 @@
   delegate_to: "{{ groups[mon_group_name][0] }}"
   when: item.value.type is not defined or item.value.type == 'replicated'
   environment:
-    CEPH_CONTAINER_IMAGE: "{{ ceph_docker_registry + '/' + ceph_docker_image + ':' + ceph_docker_image_tag if containerized_deployment else None }}"
+    CEPH_CONTAINER_IMAGE: "{{ ceph_docker_registry + '/' + ceph_docker_image + ':' + ceph_docker_image_tag if containerized_deployment | bool else None }}"
     CEPH_CONTAINER_BINARY: "{{ container_binary }}"

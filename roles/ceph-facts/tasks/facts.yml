@@ -136,7 +136,7 @@
   set_fact:
     current_fsid:
       rc: 1
-  when: rolling_update or groups.get(mon_group_name, []) | length == 0
+  when: rolling_update | bool or groups.get(mon_group_name, []) | length == 0
 
 - name: get current fsid
   command: "{{ timeout_command }} {{ container_exec_cmd }} ceph --admin-daemon /var/run/ceph/{{ cluster }}-mon.{{ hostvars[mon_host | default(groups[mon_group_name][0])]['ansible_facts']['hostname'] }}.asok config get fsid"
@@ -181,9 +181,9 @@
   when: inventory_hostname in groups.get(osd_group_name, [])
 
 - name: backward compatibility tasks related
-  when:
-    - (inventory_hostname in groups.get(rgw_group_name, []) or inventory_hostname in groups.get(nfs_group_name, []))
-    - groups.get(mon_group_name, []) | length > 0
+  when: false
+    # - (inventory_hostname in groups.get(rgw_group_name, []) or inventory_hostname in groups.get(nfs_group_name, []))
+    # - groups.get(mon_group_name, []) | length > 0
   block:
     - name: get ceph current status
       command: "{{ timeout_command }} {{ _container_exec_cmd | default('') }} ceph --cluster {{ cluster }} service dump -f json"
@@ -253,7 +253,7 @@
 
 - name: import_tasks set_radosgw_address.yml
   import_tasks: set_radosgw_address.yml
-  when: inventory_hostname in groups.get(rgw_group_name, [])
+  when: inventory_hostname in groups['YH_RgwAll']
 
 - name: set_fact use_new_ceph_iscsi package or old ceph-iscsi-config/cli
   set_fact:
@@ -262,7 +262,7 @@
 
 - name: set_fact ceph_run_cmd
   set_fact:
-    ceph_run_cmd: "{{ container_binary + ' run --rm --net=host -v /etc/ceph:/etc/ceph:z -v /var/lib/ceph/:/var/lib/ceph/:z -v /var/log/ceph/:/var/log/ceph/:z --entrypoint=ceph ' + ceph_docker_registry + '/' + ceph_docker_image + ':' + ceph_docker_image_tag if containerized_deployment else 'ceph' }}"
+    ceph_run_cmd: "{{ container_binary + ' run --rm --net=host -v /etc/ceph:/etc/ceph:z -v /var/lib/ceph/:/var/lib/ceph/:z -v /var/log/ceph/:/var/log/ceph/:z --entrypoint=ceph ' + ceph_docker_registry + '/' + ceph_docker_image + ':' + ceph_docker_image_tag if containerized_deployment | bool else 'ceph' }}"
   delegate_to: "{{ item }}"
   delegate_facts: True
   run_once: True

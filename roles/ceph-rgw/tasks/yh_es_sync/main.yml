@@ -1,0 +1,57 @@
+---
+- name: set_fact realms
+  set_fact:
+    realms: '{{ realms | default([]) | union([item.rgw_realm]) }}'
+  run_once: true
+  loop: "{{ rgw_instances_all }}"
+  when: item.rgw_zonemaster | default(hostvars[item.host]['rgw_zonemaster']) | bool
+
+- name: create list zonegroups
+  set_fact:
+    zonegroups: "{{ zonegroups | default([]) | union([{ 'realm': item.rgw_realm, 'zonegroup': item.rgw_zonegroup, 'is_master': item.rgw_zonegroupmaster | default(hostvars[item.host]['rgw_zonegroupmaster']) }]) }}"
+  run_once: true
+  loop: "{{ rgw_instances_all }}"
+  when: item.rgw_zonegroupmaster | default(hostvars[item.host]['rgw_zonegroupmaster']) | bool
+
+- name: create list zones
+  set_fact:
+    zones: "{{ zones | default([]) | union([{ 'realm': item.rgw_realm, 'zonegroup': item.rgw_zonegroup, 'zone': item.rgw_zone, 'is_master': item.rgw_zonemaster, 'system_access_key': item.system_access_key, 'system_secret_key': item.system_secret_key, 'tier_type': item.tier_type|default(omit), 'es_tier_conf_endpoint': item.es_tier_conf_endpoint|default(omit), 'es_tier_conf_username': item.es_tier_conf_username|default(omit), 'es_tier_conf_password': item.es_tier_conf_password|default(omit), 'es_tier_conf_num_shards': item.es_tier_conf_num_shards|default(omit), 'es_tier_conf_num_replicas': item.es_tier_conf_num_replicas|default(omit), 'es_tier_conf_explicit_custom_meta': item.es_tier_conf_explicit_custom_meta|default(omit), 'es_tier_conf_index_buckets_list': item.es_tier_conf_index_buckets_list|default(omit), 'es_tier_conf_approved_owners_list': item.es_tier_conf_approved_owners_list|default(omit), 'es_tier_conf_override_index_path': item.es_tier_conf_override_index_path|default(omit) }]) }}"
+  run_once: true
+  loop: "{{ rgw_instances_all }}"
+
+- name: create master zone endpoints list
+  set_fact:
+    yh_master_endpoints: "{{ yh_master_endpoints | default([]) | union(['http://' + item + ':' + yh_openresty_master_port|string ]) }}"
+  run_once: true
+  loop: "{{ groups['YH_OrMasterClient'] }}"
+
+- name: create elasticsearch zone endpoints list
+  set_fact:
+    yh_esync_endpoints: "{{ yh_esync_endpoints | default([]) | union(['http://' + item + ':' + yh_openresty_es_port|string ]) }}"
+  run_once: true
+  loop: "{{ groups['YH_OrEsyncClient'] }}"
+
+- name: create a list of zones and all their endpoints
+  set_fact:
+    # seems only unique key-value pairs are inserted into the list
+    zone_endpoints_list: "{{ zone_endpoints_list | default([]) | union([{'zone': item.rgw_zone, 'zonegroup': item.rgw_zonegroup, 'realm': item.rgw_realm, 'is_master': item.rgw_zonemaster, 'endpoints': ','.join(yh_master_endpoints) if item.rgw_zonemaster|bool else ','.join(yh_esync_endpoints), 'system_access_key': item.system_access_key, 'system_secret_key': item.system_secret_key }]) }}"
+  loop: "{{ rgw_instances_all }}"
+  run_once: true
+
+# Include the tasks depending on the zone type
+- name: include_tasks multisite/master.yml
+  include_tasks: ../multisite/master.yml
+
+- name: include_tasks multisite/secondary.yml
+  include_tasks: ../multisite/secondary.yml
+  when: deploy_secondary_zones | default(True) | bool
+
+- name: include_tasks start_radosgw.yml
+  include_tasks: ../start_radosgw.yml
+  when:
+    - not containerized_deployment | bool
+
+- name: include_tasks start_docker_rgw.yml
+  include_tasks: ../start_docker_rgw.yml
+  when:
+    - containerized_deployment | bool

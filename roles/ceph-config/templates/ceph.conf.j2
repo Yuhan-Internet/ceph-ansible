@@ -2,7 +2,7 @@
 # {{ ansible_managed }}
 
 [global]
-{% if not cephx %}
+{% if not cephx | bool %}
 auth cluster required = none
 auth service required = none
 auth client required = none
@@ -36,16 +36,10 @@ osd pool default crush rule = {{ osd_pool_default_crush_rule }}
 fsid = {{ fsid }}
 mon host = {% if nb_mon > 0 %}
 {% for host in _monitor_addresses -%}
-{% if msgr2_migration | default(False) %}
-[{{ "v2:" + host.addr + mon_host_v2.suffix }},{{ "v1:" + host.addr + mon_host_v1.suffix }}]
-{%- elif not msgr2_migration | default(False) and rolling_update -%}
-{{ host.addr }}
-{%- else -%}
-{% if mon_host_v1.enabled %}
+{% if mon_host_v1.enabled | bool %}
 {% set _v1 = ',v1:' + host.addr + mon_host_v1.suffix %}
 {% endif %}
 [{{ "v2:" + host.addr + mon_host_v2.suffix }}{{ _v1 | default('') }}]
-{%- endif %}
 {%- if not loop.last -%},{%- endif %}
 {%- endfor %}
 {% elif nb_mon == 0 %}
@@ -103,7 +97,7 @@ osd memory target = {{ _osd_memory_target | default(osd_memory_target) }}
 {% endif %}
 {% endif %}
 
-{% if inventory_hostname in groups.get(rgw_group_name, []) %}
+{% if inventory_hostname in groups['YH_RgwAll'] %}
 {% set _rgw_hostname = hostvars[inventory_hostname]['rgw_hostname'] | default(hostvars[inventory_hostname]['ansible_facts']['hostname']) %}
 {# {{ hostvars[host]['rgw_hostname'] }} for backward compatibility, fqdn issues. See bz1580408 #}
 {% if hostvars[inventory_hostname]['rgw_instances'] is defined %}
@@ -124,12 +118,34 @@ rgw frontends = {{ frontend_line(radosgw_frontend_type) }} {{ radosgw_frontend_o
 {% if 'num_threads' not in radosgw_frontend_options %}
 rgw thread pool size = {{ radosgw_thread_pool_size }}
 {% endif %}
-{% if rgw_multisite | bool %}
-{% if ((instance['rgw_zonemaster'] | default(rgw_zonemaster) | bool) or (deploy_secondary_zones | default(True) | bool)) %}
+{% if (rgw_multisite | default(False) | bool) or (rgw_yh_es_sync | default(False) | bool) %}
+{% if ((instance['rgw_zonemaster'] | default(rgw_zonemaster) | bool) or (deploy_secondary_zones | default(True) | bool) or (rgw_yh_es_sync | default(False) | bool)) %}
 rgw_realm = {{ instance['rgw_realm'] }}
 rgw_zonegroup = {{ instance['rgw_zonegroup'] }}
 rgw_zone = {{ instance['rgw_zone'] }}
 {% endif %}
+{% endif %}
+{% if instance['rgw_yh_type'] == 'client' %}
+rgw_run_sync_thread = false
+rgw_enable_gc_threads = false
+rgw_enable_lc_threads = false
+rgw_enable_quota_threads = true
+rgw sts key = {{ rgw_yh_sts_key }}
+rgw s3 auth use sts = {{ rgw_s3_auth_use_sts }}
+{% endif %}
+{% if instance['rgw_yh_type'] == 'master' %}
+rgw_run_sync_thread = true
+rgw_enable_gc_threads = true
+rgw_enable_lc_threads = true
+rgw_enable_quota_threads = false
+rgw_gc_max_objs = 1024
+rgw_lc_max_objs = 1024
+{% endif %}
+{% if instance['rgw_yh_type'] == 'es' %}
+rgw_run_sync_thread = true
+rgw_enable_gc_threads = false
+rgw_enable_lc_threads = false
+rgw_enable_quota_threads = false
 {% endif %}
 {% endfor %}
 {% endif %}
