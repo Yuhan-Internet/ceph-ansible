@@ -171,7 +171,7 @@
             start: "{{ lookup('pipe', 'date +%Y%m%d%H%M%SZ') }}"
 
   vars_files:
-    - group_vars/all.yml
+    - "{{ inventory_dir }}/group_vars/all.yml"
   serial: "{{ yh_osd_deploy_serial | default(5) | int }}"
 
   tasks:
